@@ -7,10 +7,6 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" />
 </p>
 
-#implement YJS for conflict free usage and to connect client
-
-
-
 <h1 align="center">⚡ CodeSync — Pro Real-time Collaborative IDE</h1>
 
 <p align="center">
