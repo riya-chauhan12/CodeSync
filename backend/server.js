@@ -14,10 +14,10 @@ import executionRoutes from './routes/execution.js';
 import authMiddleware from './middleware/authMiddleware.js';
 import File from './models/File.js';
 import WorkspaceMember from './models/WorkspaceMember.js';
-
+import dotenv from "dotenv";
 const app = express();
 const server = http.createServer(app);
-
+dotenv.config();
 app.use(compression());
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────

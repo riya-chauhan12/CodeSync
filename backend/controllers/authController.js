@@ -31,7 +31,9 @@ export const signup = async (req, res) => {
       email,
       passwordHash,
     });
-
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET is not configured");
+    }
     const token = jwt.sign(
       { id: user._id, username: user.username },
       process.env.JWT_SECRET,
