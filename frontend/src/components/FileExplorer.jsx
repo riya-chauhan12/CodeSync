@@ -28,20 +28,15 @@ const LANG_ICON = {
 };
 
 const getIcon = (name, type) => {
-  if (type === "folder") return null; // handled with CSS
+  if (type === "folder") return null;
   const ext = name?.split(".").pop()?.toLowerCase() || "";
   return LANG_ICON[ext] || "📄";
 };
 
-/**
- * Build a tree from a flat list of files.
- * Returns an array of nodes: { ...file, children: [] }
- */
 const buildTree = (files) => {
   const map = {};
   const roots = [];
 
-  // Sort: folders first, then alphabetically
   const sorted = [...files].sort((a, b) => {
     if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -52,14 +47,15 @@ const buildTree = (files) => {
   });
 
   sorted.forEach((f) => {
-    // Determine parent folder by matching path+name
     const parentPath = f.path;
+
     const parent = sorted.find(
       (p) =>
         p.type === "folder" &&
         ((p.path === "/" && parentPath === `/${p.name}`) ||
-          (p.path !== "/" && parentPath === `${p.path}/${p.name}`)),
+          (p.path !== "/" && parentPath === `${p.path}/${p.name}`))
     );
+
     if (parent && map[parent._id]) {
       map[parent._id].children.push(map[f._id]);
     } else if (f.path === "/") {
@@ -68,6 +64,56 @@ const buildTree = (files) => {
   });
 
   return roots;
+};
+
+// ─── Search Helpers ───────────────────────────────────────────────────────────
+
+const filterTree = (nodes, query) => {
+  if (!query.trim()) return nodes;
+
+  return nodes
+    .map((node) => {
+      const matches = node.name
+        .toLowerCase()
+        .includes(query.toLowerCase());
+
+      if (node.type === "folder") {
+        const filteredChildren = filterTree(node.children || [], query);
+
+        if (matches || filteredChildren.length > 0) {
+          return {
+            ...node,
+            children: filteredChildren,
+          };
+        }
+      }
+
+      if (matches) {
+        return node;
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+};
+
+const highlightMatch = (text, query) => {
+  if (!query.trim()) return text;
+
+  const regex = new RegExp(`(${query})`, "gi");
+
+  return text.split(regex).map((part, index) =>
+    part.toLowerCase() === query.toLowerCase() ? (
+      <span
+        key={index}
+        className="bg-blue-500/20 text-blue-300 rounded px-0.5"
+      >
+        {part}
+      </span>
+    ) : (
+      part
+    )
+  );
 };
 
 // ─── Inline Input ─────────────────────────────────────────────────────────────
@@ -80,18 +126,24 @@ const InlineInput = ({ onSubmit, onCancel, placeholder }) => {
   const handleSubmit = useCallback(
     async (e) => {
       e?.preventDefault();
-      if (submitting.current || hasSubmitted.current) return; // prevent double-fire
+
+      if (submitting.current || hasSubmitted.current) return;
+
       const name = value.trim();
+
       if (!name) {
         onCancel();
         return;
       }
+
       submitting.current = true;
       hasSubmitted.current = true;
+
       await onSubmit(name);
+
       submitting.current = false;
     },
-    [value, onSubmit, onCancel],
+    [value, onSubmit, onCancel]
   );
 
   const handleKeyDown = (e) => {
@@ -99,11 +151,11 @@ const InlineInput = ({ onSubmit, onCancel, placeholder }) => {
       e.preventDefault();
       handleSubmit();
     }
+
     if (e.key === "Escape") onCancel();
   };
 
   const handleBlur = () => {
-    // Only cancel if we haven't submitted yet
     if (!submitting.current && !hasSubmitted.current) {
       onCancel();
     }
@@ -136,9 +188,10 @@ const TreeNode = ({
   allFiles,
   canEdit,
   workspaceId,
+  searchQuery,
 }) => {
   const [expanded, setExpanded] = useState(true);
-  const [creating, setCreating] = useState(null); // 'file'|'folder'|null
+  const [creating, setCreating] = useState(null);
   const [renaming, setRenaming] = useState(false);
 
   const folderPath =
@@ -146,10 +199,14 @@ const TreeNode = ({
 
   const handleCreateFile = async (name) => {
     try {
-      const newFile = await createFile({ workspaceId, name, path: folderPath });
-      // Don't add to state here - let socket handle it to avoid duplicates
-      // onFilesChange((prev) => [...prev, newFile]);
+      const newFile = await createFile({
+        workspaceId,
+        name,
+        path: folderPath,
+      });
+
       onFileSelect(newFile._id);
+
       toast.success(`Created ${name}`);
     } catch (err) {
       const msg = err.response?.data?.message || "Failed to create file";
@@ -161,13 +218,12 @@ const TreeNode = ({
 
   const handleCreateFolder = async (name) => {
     try {
-      const newFolder = await createFolder({
+      await createFolder({
         workspaceId,
         name,
         path: folderPath,
       });
-      // Don't add to state here - let socket handle it to avoid duplicates
-      // onFilesChange((prev) => [...prev, newFolder]);
+
       toast.success(`Created folder ${name}`);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to create folder");
@@ -178,17 +234,25 @@ const TreeNode = ({
 
   const handleDelete = async (e) => {
     e.stopPropagation();
+
     const label =
       node.type === "folder"
         ? `folder "${node.name}" and all its contents`
         : `file "${node.name}"`;
+
     if (!window.confirm(`Delete ${label}?`)) return;
+
     try {
       const result = await deleteFile(node._id);
+
       onFilesChange((prev) =>
-        prev.filter((f) => !result.deletedIds.includes(String(f._id))),
+        prev.filter((f) => !result.deletedIds.includes(String(f._id)))
       );
-      if (result.deletedIds.includes(String(activeFileId))) onFileSelect(null);
+
+      if (result.deletedIds.includes(String(activeFileId))) {
+        onFileSelect(null);
+      }
+
       toast.success("Deleted");
     } catch {
       toast.error("Failed to delete");
@@ -198,14 +262,17 @@ const TreeNode = ({
   const handleRename = async (name) => {
     try {
       const updated = await renameFile(node._id, name);
+
       onFilesChange((prev) => {
-        // If folder renamed, update all child paths too
         return prev.map((f) => {
-          if (String(f._id) === String(updated._id))
+          if (String(f._id) === String(updated._id)) {
             return { ...f, ...updated };
+          }
+
           return f;
         });
       });
+
       toast.success(`Renamed to ${name}`);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to rename");
@@ -222,8 +289,12 @@ const TreeNode = ({
           onClick={() => setExpanded((v) => !v)}
         >
           <div className="flex items-center gap-1.5 overflow-hidden">
-            <span className="folder-arrow text-gray-500 w-4 text-center">{expanded ? "▾" : "▸"}</span>
+            <span className="folder-arrow text-gray-500 w-4 text-center">
+              {expanded ? "▾" : "▸"}
+            </span>
+
             <span className="folder-icon text-blue-400 opacity-80">📁</span>
+
             {renaming ? (
               <InlineInput
                 placeholder={node.name}
@@ -231,11 +302,17 @@ const TreeNode = ({
                 onCancel={() => setRenaming(false)}
               />
             ) : (
-              <span className="file-name truncate">{node.name}</span>
+              <span className="file-name truncate">
+                {highlightMatch(node.name, searchQuery)}
+              </span>
             )}
           </div>
+
           {canEdit && !renaming && (
-            <div className="item-actions hidden group-hover:flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="item-actions hidden group-hover:flex items-center gap-0.5"
+              onClick={(e) => e.stopPropagation()}
+            >
               <button
                 className="btn-icon-tiny text-gray-400 hover:text-white px-1 py-0.5 rounded hover:bg-white/10 transition"
                 title="New file"
@@ -243,6 +320,7 @@ const TreeNode = ({
               >
                 +F
               </button>
+
               <button
                 className="btn-icon-tiny text-gray-400 hover:text-white px-1 py-0.5 rounded hover:bg-white/10 transition"
                 title="New folder"
@@ -250,6 +328,7 @@ const TreeNode = ({
               >
                 +D
               </button>
+
               <button
                 className="btn-icon-tiny text-gray-400 hover:text-white px-1 py-0.5 rounded hover:bg-white/10 transition"
                 title="Rename"
@@ -257,6 +336,7 @@ const TreeNode = ({
               >
                 ✎
               </button>
+
               <button
                 className="btn-icon-tiny btn-delete-tiny text-gray-400 hover:text-red-400 px-1 py-0.5 rounded hover:bg-red-500/10 transition"
                 title="Delete"
@@ -279,6 +359,7 @@ const TreeNode = ({
                 />
               </div>
             )}
+
             {creating === "folder" && (
               <div style={{ paddingLeft: `${(level + 1) * 12}px` }}>
                 <InlineInput
@@ -288,6 +369,7 @@ const TreeNode = ({
                 />
               </div>
             )}
+
             {node.children.map((child) => (
               <TreeNode
                 key={child._id}
@@ -299,6 +381,7 @@ const TreeNode = ({
                 allFiles={allFiles}
                 canEdit={canEdit}
                 workspaceId={workspaceId}
+                searchQuery={searchQuery}
               />
             ))}
           </div>
@@ -307,15 +390,21 @@ const TreeNode = ({
     );
   }
 
-  // File node
   return (
     <div
-      className={`explorer-item group flex items-center justify-between py-1.5 px-2 text-sm rounded-md cursor-pointer transition select-none mx-1 ${activeFileId === node._id ? "bg-blue-500/15 text-blue-400" : "text-gray-300 hover:bg-white/5 hover:text-white"}`}
+      className={`explorer-item group flex items-center justify-between py-1.5 px-2 text-sm rounded-md cursor-pointer transition select-none mx-1 ${
+        activeFileId === node._id
+          ? "bg-blue-500/15 text-blue-400"
+          : "text-gray-300 hover:bg-white/5 hover:text-white"
+      }`}
       style={{ paddingLeft: `${level * 12 + 20}px` }}
       onClick={() => onFileSelect(node._id)}
     >
       <div className="flex items-center gap-2 overflow-hidden">
-        <span className="file-icon opacity-80 w-4 text-center">{getIcon(node.name, node.type)}</span>
+        <span className="file-icon opacity-80 w-4 text-center">
+          {getIcon(node.name, node.type)}
+        </span>
+
         {renaming ? (
           <InlineInput
             placeholder={node.name}
@@ -323,11 +412,17 @@ const TreeNode = ({
             onCancel={() => setRenaming(false)}
           />
         ) : (
-          <span className="file-name truncate">{node.name}</span>
+          <span className="file-name truncate">
+            {highlightMatch(node.name, searchQuery)}
+          </span>
         )}
       </div>
+
       {canEdit && !renaming && (
-        <div className="item-actions hidden group-hover:flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="item-actions hidden group-hover:flex items-center gap-0.5"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             className="btn-icon-tiny text-gray-400 hover:text-white px-1 py-0.5 rounded hover:bg-white/10 transition"
             title="Rename"
@@ -338,6 +433,7 @@ const TreeNode = ({
           >
             ✎
           </button>
+
           <button
             className="btn-icon-tiny btn-delete-tiny text-gray-400 hover:text-red-400 px-1 py-0.5 rounded hover:bg-red-500/10 transition"
             title="Delete"
@@ -361,33 +457,47 @@ const FileExplorer = ({
   onFilesChange,
   canEdit,
 }) => {
-  const [creatingRoot, setCreatingRoot] = useState(null); // 'file'|'folder'|null
+  const [creatingRoot, setCreatingRoot] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
   const submittingRoot = useRef(false);
 
   const tree = buildTree(files);
 
+  const filteredTree = filterTree(tree, searchQuery);
+
   const handleRootCreate = async (type, name) => {
     if (submittingRoot.current) return;
-    // Local duplicate check before hitting server
+
     const dup = files.find(
-      (f) => f.path === "/" && f.name.toLowerCase() === name.toLowerCase(),
+      (f) => f.path === "/" && f.name.toLowerCase() === name.toLowerCase()
     );
+
     if (dup) {
       toast.error(`A ${dup.type} named "${name}" already exists here.`);
       return;
     }
+
     submittingRoot.current = true;
+
     try {
       if (type === "file") {
-        const newFile = await createFile({ workspaceId, name, path: "/" });
-        // Don't add to state here - let socket handle it to avoid duplicates
-        // onFilesChange((prev) => [...prev, newFile]);
+        const newFile = await createFile({
+          workspaceId,
+          name,
+          path: "/",
+        });
+
         onFileSelect(newFile._id);
+
         toast.success(`Created ${name}`);
       } else {
-        const newFolder = await createFolder({ workspaceId, name, path: "/" });
-        // Don't add to state here - let socket handle it to avoid duplicates
-        // onFilesChange((prev) => [...prev, newFolder]);
+        await createFolder({
+          workspaceId,
+          name,
+          path: "/",
+        });
+
         toast.success(`Created folder ${name}`);
       }
     } catch (err) {
@@ -401,8 +511,11 @@ const FileExplorer = ({
 
   return (
     <div className="file-explorer w-64 bg-gray-900/60 backdrop-blur-md border-r border-gray-800/60 flex flex-col shrink-0 text-gray-300">
-      <div className="explorer-header flex items-center justify-between px-4 py-3 border-b border-gray-800/60 mb-2">
-        <span className="explorer-title text-xs font-semibold tracking-wider text-gray-500 uppercase">FILES</span>
+      <div className="explorer-header flex items-center justify-between px-4 py-3 border-b border-gray-800/60">
+        <span className="explorer-title text-xs font-semibold tracking-wider text-gray-500 uppercase">
+          FILES
+        </span>
+
         {canEdit && (
           <div className="explorer-header-actions flex items-center gap-1">
             <button
@@ -412,6 +525,7 @@ const FileExplorer = ({
             >
               +F
             </button>
+
             <button
               className="btn-icon w-6 h-6 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition"
               title="New Folder"
@@ -421,6 +535,16 @@ const FileExplorer = ({
             </button>
           </div>
         )}
+      </div>
+
+      <div className="px-3 py-2 border-b border-gray-800/60">
+        <input
+          type="text"
+          placeholder="Search files..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full bg-gray-800/60 border border-gray-700/60 text-white rounded-md px-3 py-2 text-sm outline-none focus:border-blue-500/50"
+        />
       </div>
 
       <div className="explorer-list flex-1 overflow-y-auto pb-4 custom-scrollbar">
@@ -433,6 +557,7 @@ const FileExplorer = ({
             />
           </div>
         )}
+
         {creatingRoot === "folder" && (
           <div className="px-3 mb-1">
             <InlineInput
@@ -449,7 +574,15 @@ const FileExplorer = ({
           </p>
         )}
 
-        {tree.map((node) => (
+        {filteredTree.length === 0 &&
+          searchQuery.trim() &&
+          files.length > 0 && (
+            <p className="text-sm text-gray-500 text-center p-6 italic">
+              No files found
+            </p>
+          )}
+
+        {filteredTree.map((node) => (
           <TreeNode
             key={node._id}
             node={node}
@@ -460,6 +593,7 @@ const FileExplorer = ({
             allFiles={files}
             canEdit={canEdit}
             workspaceId={workspaceId}
+            searchQuery={searchQuery}
           />
         ))}
       </div>
