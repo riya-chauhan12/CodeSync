@@ -95,6 +95,38 @@ const ShareWorkspaceModal = ({ workspaceId, workspaceName, members: initialMembe
         </form>
 
         {/* Members list */}
+        {/* Copy invite link */}
+        <div className="share-link-section border-t border-gray-800/60 pt-4 mt-4">
+          <h3 className="text-sm font-semibold tracking-wider text-gray-500 uppercase mb-3">
+            Share Link
+          </h3>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="form-input flex-1 h-10 px-3 rounded-lg bg-gray-800/60 border border-gray-700/60 text-gray-300 text-sm focus:outline-none select-all"
+              value={`${window.location.origin}/workspace/${workspaceId}`}
+              readOnly
+              onClick={(e) => e.target.select()}
+            />
+            <button
+              type="button"
+              className="btn btn-primary h-10 px-4 text-sm whitespace-nowrap"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(
+                    `${window.location.origin}/workspace/${workspaceId}`
+                  );
+                  toast.success('Link copied to clipboard!');
+                } catch (err) {
+                  toast.error('Failed to copy link. Please copy manually.');
+                }
+              }}
+            >
+              Copy Link
+            </button>
+          </div>
+        </div>
+
         {members.length > 0 && (
           <div className="member-list flex-1 overflow-y-auto custom-scrollbar pr-2 border-t border-gray-800/60 pt-6">
             <h3 className="text-sm font-semibold tracking-wider text-gray-500 uppercase mb-4">
